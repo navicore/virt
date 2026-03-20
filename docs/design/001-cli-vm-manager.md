@@ -25,17 +25,17 @@ The user wants to: define a VM from an ISO image, start it, interact via console
 - `Virtualization` — VM lifecycle
 - `Foundation` — file management, JSON config
 
-**VM Configuration stored as JSON** in `~/.xcodevirt/vms/<name>/config.json` alongside the disk image and EFI variable store.
+**VM Configuration stored as JSON** in `~/.virt/vms/<name>/config.json` alongside the disk image and EFI variable store.
 
 **Commands**:
 
 | Command | What it does |
 |---|---|
-| `xcodevirt create <name> --iso <path> --disk <size> --cpus <n> --memory <mb>` | Allocate disk image, write config, store EFI NVRAM |
-| `xcodevirt start <name> [--iso <path>]` | Boot VM; optional ISO attachment for install/rescue |
-| `xcodevirt stop <name>` | Request graceful shutdown via virtio; fallback to force kill |
-| `xcodevirt delete <name>` | Remove VM directory (disk, config, NVRAM) |
-| `xcodevirt list` | Show all VMs and their state (stopped/running) |
+| `virt create <name> --iso <path> --disk <size> --cpus <n> --memory <mb>` | Allocate disk image, write config, store EFI NVRAM |
+| `virt start <name> [--iso <path>]` | Boot VM; optional ISO attachment for install/rescue |
+| `virt stop <name>` | Request graceful shutdown via virtio; fallback to force kill |
+| `virt delete <name>` | Remove VM directory (disk, config, NVRAM) |
+| `virt list` | Show all VMs and their state (stopped/running) |
 
 **VM hardware model** (per VM):
 - `VZEFIBootLoader` + per-VM NVRAM variable store
@@ -60,9 +60,9 @@ The user wants to: define a VM from an ISO image, start it, interact via console
 ## Checkpoints
 
 1. `swift build` succeeds — package compiles against Virtualization framework
-2. `xcodevirt create test --disk 10 --cpus 2 --memory 2048` — creates `~/.xcodevirt/vms/test/` with config.json and a 10GB disk image
-3. `xcodevirt start test --iso ubuntu.iso` — boots to ISO installer, console is interactive in terminal
-4. After OS install: `xcodevirt start test` (no ISO) — boots from disk into installed Linux
-5. `xcodevirt stop test` from another terminal — VM shuts down cleanly
-6. `xcodevirt list` — shows VM name, cpu, memory, running/stopped status
-7. `xcodevirt delete test` — directory gone
+2. `virt create test --disk 10 --cpus 2 --memory 2048` — creates `~/.virt/vms/test/` with config.json and a 10GB disk image
+3. `virt start test --iso ubuntu.iso` — boots to ISO installer, console is interactive in terminal
+4. After OS install: `virt start test` (no ISO) — boots from disk into installed Linux
+5. `virt stop test` from another terminal — VM shuts down cleanly
+6. `virt list` — shows VM name, cpu, memory, running/stopped status
+7. `virt delete test` — directory gone
