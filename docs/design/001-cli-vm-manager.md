@@ -5,9 +5,14 @@
 
 ## Intent
 
-Build a Swift CLI tool that manages Linux VMs on macOS using Apple's Virtualization framework. Replaces the workflow of running the Xcode virtualization example project (or VMware/VirtualBox) with a terminal-native experience.
+Build a Swift CLI tool that manages Linux VMs on macOS using Apple's
+Virtualization framework. Replaces the workflow of running the Xcode
+virtualization example project (or VMware/VirtualBox) with a terminal-native
+experience.
 
-The user wants to: define a VM from an ISO image, start it, interact via console, stop it, delete it — all from the command line. No GUI. Same mental model as VMware/VirtualBox but lighter.
+The user wants to: define a VM from an ISO image, start it, interact via
+console, stop it, delete it — all from the command line. No GUI. Same mental
+model as VMware/VirtualBox but lighter.
 
 ## Constraints
 
@@ -25,7 +30,8 @@ The user wants to: define a VM from an ISO image, start it, interact via console
 - `Virtualization` — VM lifecycle
 - `Foundation` — file management, JSON config
 
-**VM Configuration stored as JSON** in `~/.virt/vms/<name>/config.json` alongside the disk image and EFI variable store.
+**VM Configuration stored as JSON** in `~/.virt/vms/<name>/config.json`
+alongside the disk image and EFI variable store.
 
 **Commands**:
 
@@ -45,17 +51,20 @@ The user wants to: define a VM from an ISO image, start it, interact via console
 - `VZVirtioConsoleDeviceConfiguration` — serial console piped to process stdin/stdout
 - `VZVirtioEntropyDeviceConfiguration` — `/dev/random` source
 
-**Lifecycle management**: A running VM is a process. `start` runs in the foreground with the console attached. Ctrl-C triggers graceful shutdown. A PID file tracks running state for `list` and `stop` (from another terminal).
+**Lifecycle management**: A running VM is a process. `start` runs in the
+foreground with the console attached. Ctrl-C triggers graceful shutdown. A PID
+file tracks running state for `list` and `stop` (from another terminal).
 
 ## Domain Events
 
 | Event | What follows |
 |---|---|
-| **VM Created** | Disk image allocated, EFI NVRAM initialized, config.json written |
-| **VM Started** | Process holds VM handle; PID file written; console attached to terminal |
-| **VM Shutdown Requested** | `VZVirtualMachine.requestStop()` called; timeout then force kill |
-| **VM Stopped** | PID file removed; exit code returned |
-| **VM Deleted** | Entire VM directory removed from disk |
+| VM Created | Disk image allocated, EFI NVRAM initialized, config.json written |
+| VM Started | Process holds VM handle; PID file written; console attached to terminal |
+| VM Shutdown Requested | `VZVirtualMachine.requestStop()` called; timeout then force kill |
+| VM Stopped | PID file removed; exit code returned |
+| VM Deleted | Entire VM directory removed from disk |
+
 
 ## Checkpoints
 
@@ -66,3 +75,4 @@ The user wants to: define a VM from an ISO image, start it, interact via console
 5. `virt stop test` from another terminal — VM shuts down cleanly
 6. `virt list` — shows VM name, cpu, memory, running/stopped status
 7. `virt delete test` — directory gone
+
