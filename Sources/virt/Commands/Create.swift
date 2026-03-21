@@ -26,26 +26,31 @@ struct Create: ParsableCommand {
             throw ValidationError("VM '\(name)' already exists.")
         }
 
-        try dir.create()
+        do {
+            try dir.create()
 
-        // Write config
-        let config = VMConfig(
-            name: name,
-            cpus: cpus,
-            memoryMB: memory,
-            diskSizeGB: disk
-        )
-        try config.write(to: dir.configURL)
+            // Write config
+            let config = VMConfig(
+                name: name,
+                cpus: cpus,
+                memoryMB: memory,
+                diskSizeGB: disk
+            )
+            try config.write(to: dir.configURL)
 
-        // Allocate raw disk image
-        let diskSizeBytes = UInt64(disk) * 1024 * 1024 * 1024
-        FileManager.default.createFile(atPath: dir.diskURL.path, contents: nil)
-        let handle = try FileHandle(forWritingTo: dir.diskURL)
-        try handle.truncate(atOffset: diskSizeBytes)
-        try handle.close()
+            // Allocate raw disk image
+            let diskSizeBytes = UInt64(disk) * 1024 * 1024 * 1024
+            try Data().write(to: dir.diskURL)
+            let handle = try FileHandle(forWritingTo: dir.diskURL)
+            try handle.truncate(atOffset: diskSizeBytes)
+            try handle.close()
 
-        // Initialize EFI variable store
-        let _ = try VZEFIVariableStore(creatingVariableStoreAt: dir.nvramURL)
+            // Initialize EFI variable store
+            _ = try VZEFIVariableStore(creatingVariableStoreAt: dir.nvramURL)
+        } catch {
+            try? dir.remove()
+            throw error
+        }
 
         print("Created VM '\(name)'")
         print("  CPUs:   \(cpus)")
