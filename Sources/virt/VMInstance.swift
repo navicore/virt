@@ -2,11 +2,12 @@ import ArgumentParser
 import Foundation
 import Virtualization
 
+/// Shared VM configuration builder and runtime for both headless and GUI modes.
 final class VMInstance: NSObject, VZVirtualMachineDelegate {
     let config: VMConfig
     let dir: VMDirectory
     let isoPath: String?
-    private var virtualMachine: VZVirtualMachine?
+    private(set) var virtualMachine: VZVirtualMachine?
     private var shutdownRequested = false
     private var shutdownDeadline: Date?
     private var signalSource: (any DispatchSourceSignal)?
@@ -18,9 +19,11 @@ final class VMInstance: NSObject, VZVirtualMachineDelegate {
         self.isoPath = isoPath
     }
 
-    func run() throws {
+    // MARK: - Headless run (virt start)
+
+    func runHeadless() throws {
         defer { restoreTerminal() }
-        let vzConfig = try buildConfiguration()
+        let vzConfig = try buildConfiguration(gui: false)
         try vzConfig.validate()
 
         let vm = VZVirtualMachine(configuration: vzConfig)
@@ -40,7 +43,6 @@ final class VMInstance: NSObject, VZVirtualMachineDelegate {
             }
         }
 
-        // Run the run loop to keep the VM alive and handle console I/O
         while !shutdownRequested {
             RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.25))
             if startError != nil || vm.state == .stopped || vm.state == .error {
@@ -48,7 +50,6 @@ final class VMInstance: NSObject, VZVirtualMachineDelegate {
             }
         }
 
-        // If shutdown was requested via Ctrl-C, wait for graceful stop with timeout
         if let deadline = shutdownDeadline {
             while vm.state != .stopped && Date() < deadline {
                 RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.25))
@@ -60,7 +61,6 @@ final class VMInstance: NSObject, VZVirtualMachineDelegate {
                         fputs("Force stop failed: \(error.localizedDescription)\n", stderr)
                     }
                 }
-                // Give force stop a moment to complete
                 RunLoop.main.run(until: Date(timeIntervalSinceNow: 1.0))
             }
         }
@@ -68,6 +68,34 @@ final class VMInstance: NSObject, VZVirtualMachineDelegate {
         restoreTerminal()
         removePIDFile()
     }
+
+    // MARK: - GUI install (virt install)
+
+    func buildGUIConfiguration() throws -> VZVirtualMachineConfiguration {
+        let vzConfig = try buildConfiguration(gui: true)
+        try vzConfig.validate()
+        return vzConfig
+    }
+
+    func startVM(_ vm: VZVirtualMachine) {
+        self.virtualMachine = vm
+        vm.delegate = self
+        try? writePIDFile()
+
+        vm.start { result in
+            if case .failure(let error) = result {
+                DispatchQueue.main.async {
+                    fputs("VM start failed: \(error.localizedDescription)\n", stderr)
+                }
+            }
+        }
+    }
+
+    func cleanup() {
+        removePIDFile()
+    }
+
+    // MARK: - Shutdown
 
     func requestShutdown() {
         guard let vm = virtualMachine, !shutdownRequested else { return }
@@ -98,10 +126,9 @@ final class VMInstance: NSObject, VZVirtualMachineDelegate {
 
     // MARK: - Configuration
 
-    private func buildConfiguration() throws -> VZVirtualMachineConfiguration {
+    private func buildConfiguration(gui: Bool) throws -> VZVirtualMachineConfiguration {
         let vzConfig = VZVirtualMachineConfiguration()
 
-        // CPU and memory
         vzConfig.cpuCount = config.cpus
         vzConfig.memorySize = UInt64(config.memoryMB) * 1024 * 1024
 
@@ -114,7 +141,7 @@ final class VMInstance: NSObject, VZVirtualMachineDelegate {
         }
         vzConfig.bootLoader = bootLoader
 
-        // Storage devices — ISO first (if provided) for boot priority on fresh VMs
+        // Storage devices — ISO first for boot priority
         var storageDevices: [VZStorageDeviceConfiguration] = []
 
         if let isoPath = isoPath {
@@ -129,13 +156,11 @@ final class VMInstance: NSObject, VZVirtualMachineDelegate {
             storageDevices.append(VZUSBMassStorageDeviceConfiguration(attachment: isoAttachment))
         }
 
-        // Main disk
         let diskAttachment = try VZDiskImageStorageDeviceAttachment(
             url: dir.diskURL,
             readOnly: false
         )
         storageDevices.append(VZVirtioBlockDeviceConfiguration(attachment: diskAttachment))
-
         vzConfig.storageDevices = storageDevices
 
         // NAT networking
@@ -143,67 +168,76 @@ final class VMInstance: NSObject, VZVirtualMachineDelegate {
         networkDevice.attachment = VZNATNetworkDeviceAttachment()
         vzConfig.networkDevices = [networkDevice]
 
-        // Virtio console — exposes as /dev/hvc0 in the guest.
-        // Most Linux distros default to ttyS0; the guest kernel may need
-        // console=hvc0 on the command line for interactive console output.
+        // Entropy
+        vzConfig.entropyDevices = [VZVirtioEntropyDeviceConfiguration()]
+
+        if gui {
+            // GUI mode: framebuffer + keyboard + mouse
+            let graphics = VZVirtioGraphicsDeviceConfiguration()
+            graphics.scanouts = [VZVirtioGraphicsScanoutConfiguration(
+                widthInPixels: 1280,
+                heightInPixels: 800
+            )]
+            vzConfig.graphicsDevices = [graphics]
+            vzConfig.keyboards = [VZUSBKeyboardConfiguration()]
+            vzConfig.pointingDevices = [VZUSBScreenCoordinatePointingDeviceConfiguration()]
+        }
+
+        // Virtio console (hvc0) — always present for post-install headless use
         let consoleDevice = VZVirtioConsoleDeviceConfiguration()
-        let serialPort = VZVirtioConsolePortConfiguration()
-        serialPort.isConsole = true
+        let consolePort = VZVirtioConsolePortConfiguration()
+        consolePort.isConsole = true
 
-        let inputPipe = Pipe()
-        let outputPipe = Pipe()
-
-        let serialAttachment = VZFileHandleSerialPortAttachment(
-            fileHandleForReading: inputPipe.fileHandleForReading,
-            fileHandleForWriting: outputPipe.fileHandleForWriting
-        )
-        serialPort.attachment = serialAttachment
-        consoleDevice.ports[0] = serialPort
-        vzConfig.consoleDevices = [consoleDevice]
-
-        // Pipe stdin to the VM (only if running in a terminal)
-        if isatty(STDIN_FILENO) != 0 {
-            pipeStdinToVM(inputPipe: inputPipe)
+        if gui {
+            // GUI mode: console device present but not wired to terminal
+            consoleDevice.ports[0] = consolePort
         } else {
+            // Headless mode: wire hvc0 to stdin/stdout
+            let inputPipe = Pipe()
+            let outputPipe = Pipe()
+
+            let consoleAttachment = VZFileHandleSerialPortAttachment(
+                fileHandleForReading: inputPipe.fileHandleForReading,
+                fileHandleForWriting: outputPipe.fileHandleForWriting
+            )
+            consolePort.attachment = consoleAttachment
+            consoleDevice.ports[0] = consolePort
+
+            if isatty(STDIN_FILENO) != 0 {
+                enableRawMode()
+            }
+
             FileHandle.standardInput.readabilityHandler = { handle in
                 let data = handle.availableData
                 if !data.isEmpty {
                     inputPipe.fileHandleForWriting.write(data)
                 }
             }
-        }
 
-        // Pipe VM output to stdout
-        outputPipe.fileHandleForReading.readabilityHandler = { handle in
-            let data = handle.availableData
-            if data.isEmpty {
-                handle.readabilityHandler = nil
-            } else {
-                FileHandle.standardOutput.write(data)
+            outputPipe.fileHandleForReading.readabilityHandler = { handle in
+                let data = handle.availableData
+                if data.isEmpty {
+                    handle.readabilityHandler = nil
+                } else {
+                    FileHandle.standardOutput.write(data)
+                }
             }
         }
 
-        // Entropy device
-        vzConfig.entropyDevices = [VZVirtioEntropyDeviceConfiguration()]
+        vzConfig.consoleDevices = [consoleDevice]
 
         return vzConfig
     }
 
-    private func pipeStdinToVM(inputPipe: Pipe) {
-        // Set terminal to raw mode for interactive console
+    // MARK: - Terminal
+
+    private func enableRawMode() {
         var current = termios()
         tcgetattr(STDIN_FILENO, &current)
         self.originalTermios = current
         var rawTermios = current
         cfmakeraw(&rawTermios)
         tcsetattr(STDIN_FILENO, TCSANOW, &rawTermios)
-
-        FileHandle.standardInput.readabilityHandler = { handle in
-            let data = handle.availableData
-            if !data.isEmpty {
-                inputPipe.fileHandleForWriting.write(data)
-            }
-        }
     }
 
     private func restoreTerminal() {

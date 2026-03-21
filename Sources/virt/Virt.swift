@@ -7,6 +7,7 @@ struct Virt: ParsableCommand {
         abstract: "Manage Linux VMs on macOS using Virtualization.framework",
         subcommands: [
             Create.self,
+            Install.self,
             Start.self,
             Stop.self,
             Delete.self,

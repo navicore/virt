@@ -1,19 +1,22 @@
 import ArgumentParser
 import Foundation
 
-struct Start: ParsableCommand {
+struct Install: ParsableCommand {
     static let configuration = CommandConfiguration(
-        abstract: "Start a VM (headless, console in terminal)"
+        abstract: "Install an OS from an ISO image (opens a GUI window)"
     )
 
     @Argument(help: "Name of the VM")
     var name: String
 
+    @Option(help: "Path to ISO image")
+    var iso: String
+
     func run() throws {
         let dir = VMDirectory(name: name)
 
         guard dir.exists else {
-            throw ValidationError("VM '\(name)' does not exist.")
+            throw ValidationError("VM '\(name)' does not exist. Run 'virt create' first.")
         }
 
         // Check if already running
@@ -27,11 +30,14 @@ struct Start: ParsableCommand {
 
         let config = try VMConfig.load(from: dir.configURL)
 
-        fputs("Starting VM '\(name)'...\n", stderr)
+        fputs("Installing to VM '\(name)'...\n", stderr)
+        fputs("  ISO: \(iso)\n", stderr)
         fputs("  CPUs: \(config.cpus), Memory: \(config.memoryMB) MB\n", stderr)
-        fputs("  Console attached (hvc0). Use 'virt stop \(name)' to shut down.\n", stderr)
+        fputs("  A window will open with the installer.\n", stderr)
+        fputs("  After install, use 'virt start \(name)' for headless boot.\n", stderr)
 
-        let instance = VMInstance(config: config, dir: dir, isoPath: nil)
-        try instance.runHeadless()
+        let instance = VMInstance(config: config, dir: dir, isoPath: iso)
+        let app = InstallerApp(vmInstance: instance)
+        try app.run()
     }
 }
