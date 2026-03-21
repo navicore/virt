@@ -19,6 +19,18 @@ struct Create: ParsableCommand {
     @Option(help: "Memory in MB")
     var memory: Int = 2048
 
+    func validate() throws {
+        guard cpus >= 1 else {
+            throw ValidationError("--cpus must be at least 1")
+        }
+        guard memory >= 512 else {
+            throw ValidationError("--memory must be at least 512 MB")
+        }
+        guard disk >= 1 else {
+            throw ValidationError("--disk must be at least 1 GB")
+        }
+    }
+
     func run() throws {
         let dir = VMDirectory(name: name)
 
@@ -38,7 +50,7 @@ struct Create: ParsableCommand {
             )
             try config.write(to: dir.configURL)
 
-            // Allocate raw disk image
+            // Allocate raw disk image (sparse — actual disk usage is near zero until written)
             let diskSizeBytes = UInt64(disk) * 1024 * 1024 * 1024
             try Data().write(to: dir.diskURL)
             let handle = try FileHandle(forWritingTo: dir.diskURL)

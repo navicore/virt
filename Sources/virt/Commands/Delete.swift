@@ -9,6 +9,9 @@ struct Delete: ParsableCommand {
     @Argument(help: "Name of the VM")
     var name: String
 
+    @Flag(help: "Skip confirmation prompt")
+    var force: Bool = false
+
     func run() throws {
         let dir = VMDirectory(name: name)
 
@@ -23,6 +26,14 @@ struct Delete: ParsableCommand {
            let pid = Int32(pidString),
            kill(pid, 0) == 0 {
             throw ValidationError("VM '\(name)' is running (PID \(pid)). Stop it first.")
+        }
+
+        if !force {
+            print("Delete VM '\(name)' and all its data? [y/N] ", terminator: "")
+            guard let response = readLine(), response.lowercased() == "y" else {
+                print("Cancelled.")
+                return
+            }
         }
 
         try dir.remove()

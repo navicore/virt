@@ -55,6 +55,7 @@ struct Stop: ParsableCommand {
         Thread.sleep(forTimeInterval: 1.0)
 
         if kill(pid, 0) != 0 {
+            try? FileManager.default.removeItem(at: dir.pidURL)
             print("VM '\(name)' killed.")
         } else {
             throw ValidationError("Failed to stop VM '\(name)' (PID \(pid)).")

@@ -53,10 +53,12 @@ struct VMDirectory {
             includingPropertiesForKeys: [.isDirectoryKey]
         )
         return contents.compactMap { url in
-            guard (try? url.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory == true else {
+            let name = url.lastPathComponent
+            guard !name.hasPrefix("."),
+                  (try? url.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory == true else {
                 return nil
             }
-            return VMDirectory(name: url.lastPathComponent)
+            return VMDirectory(name: name)
         }
     }
 }

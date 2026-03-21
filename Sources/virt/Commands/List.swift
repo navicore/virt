@@ -24,7 +24,14 @@ struct List: ParsableCommand {
                 continue
             }
 
-            let config = try VMConfig.load(from: dir.configURL)
+            let config: VMConfig
+            do {
+                config = try VMConfig.load(from: dir.configURL)
+            } catch {
+                let namePadded = dir.name.padding(toLength: nameWidth, withPad: " ", startingAt: 0)
+                print("\(namePadded)  -     -        (corrupt config)")
+                continue
+            }
             let status = vmStatus(dir: dir)
             let namePadded = config.name.padding(toLength: nameWidth, withPad: " ", startingAt: 0)
 
