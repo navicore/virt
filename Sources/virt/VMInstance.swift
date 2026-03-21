@@ -12,8 +12,6 @@ final class VMInstance: NSObject, VZVirtualMachineDelegate {
     private var signalSource: (any DispatchSourceSignal)?
     private var originalTermios: termios?
 
-    private static var atexitRegistered = false
-
     init(config: VMConfig, dir: VMDirectory, isoPath: String?) {
         self.config = config
         self.dir = dir
@@ -21,6 +19,7 @@ final class VMInstance: NSObject, VZVirtualMachineDelegate {
     }
 
     func run() throws {
+        defer { restoreTerminal() }
         let vzConfig = try buildConfiguration()
         try vzConfig.validate()
 
