@@ -28,48 +28,24 @@ jobs:
             REPO: ${{ github.repository }}
             PR NUMBER: ${{ github.event.pull_request.number }}
 
-            Review this PR for the `virt` project — a Swift CLI tool that manages
+            Review this pull request for a Swift CLI + AppKit tool that manages
             Linux VMs on macOS using Apple's Virtualization.framework.
 
-            Read docs/design/001-cli-vm-manager.md for the full design context.
+            Focus on:
+            - Correctness: error handling, resource cleanup, lifecycle bugs
+            - Virtualization.framework: device configuration, boot loader setup,
+              serial port wiring, EFI/NVRAM handling
+            - Safety: partial state cleanup on failure, PID file handling
+            - Performance: unnecessary allocations, blocking the main thread
 
-            Check the changed files against these criteria:
+            Do NOT flag:
+            - Style nits or formatting
+            - Missing documentation or comments
+            - Naming preferences
 
-            ## Virtualization.framework correctness
-            - VZ objects must be created and used on the main thread / main actor
-            - VZVirtualMachine lifecycle: validate → start → requestStop (with timeout) → stop
-            - EFI boot requires both VZEFIBootLoader and a per-VM VZEFIVariableStore
-            - Disk images used with VZVirtioBlockDeviceConfiguration should be opened
-              with the correct read/write access
-            - VZNATNetworkDeviceAttachment is the only NAT option — do not confuse
-              with VZBridgedNetworkDeviceAttachment
-            - ISO attachment uses VZUSBMassStorageDeviceConfiguration (not virtio block)
-            - Console I/O via VZVirtioConsoleDeviceConfiguration must wire
-              serialPort read/write file handles correctly
-
-            ## Swift / code standards
-            - Prefer `try` with proper error propagation over force-unwraps or silent failures
-            - FileManager operations that return Bool must have their return value checked
-            - Cleanup partial state on failure (e.g., remove VM directory if create fails partway)
-            - Use `_ =` not `let _ =` for discarded results
-            - Keep Codable models simple — no custom encode/decode unless necessary
-            - No GUI code, no SwiftUI, no AppKit — this is a pure CLI tool
-            - ArgumentParser commands should use @Argument for positional args,
-              @Option for named flags, matching the CLI spec in the design doc
-
-            ## Architecture / scope
-            - VM config lives at ~/.virt/vms/<name>/config.json
-            - Each VM directory contains: config.json, disk.raw, nvram.bin, vm.pid (when running)
-            - Out of scope: snapshots, shared folders, GPU passthrough, clustering,
-              TUI dashboards, Rosetta translation, pre-built images
-            - Flag anything that adds scope beyond the design doc
-
-            ## Review format
-            Use a summary table with severity (bug / warning / nit), the issue,
-            and the file. Then provide details with code snippets for each finding.
-
-            Do NOT flag style nits, missing documentation, or naming preferences.
-            Only report issues you are confident about. Be specific — cite file paths and line numbers.
+            Use the repository's CLAUDE.md and docs/design/ for project conventions.
+            Only report issues you are confident about. Be specific — cite file paths
+            and line numbers.
 
             Use `gh pr comment` with your Bash tool to leave your review as a comment on the PR.
 
