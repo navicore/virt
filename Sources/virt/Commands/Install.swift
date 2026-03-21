@@ -3,14 +3,14 @@ import Foundation
 
 struct Install: ParsableCommand {
     static let configuration = CommandConfiguration(
-        abstract: "Install an OS from an ISO image (opens a GUI window)"
+        abstract: "Boot a VM with a GUI window (for install or configuration)"
     )
 
     @Argument(help: "Name of the VM")
     var name: String
 
-    @Option(help: "Path to ISO image")
-    var iso: String
+    @Option(help: "Path to ISO image to attach")
+    var iso: String? = nil
 
     func run() throws {
         let dir = VMDirectory(name: name)
@@ -30,11 +30,11 @@ struct Install: ParsableCommand {
 
         let config = try VMConfig.load(from: dir.configURL)
 
-        fputs("Installing to VM '\(name)'...\n", stderr)
-        fputs("  ISO: \(iso)\n", stderr)
+        fputs("Booting VM '\(name)' with GUI...\n", stderr)
+        if let iso = iso {
+            fputs("  ISO: \(iso)\n", stderr)
+        }
         fputs("  CPUs: \(config.cpus), Memory: \(config.memoryMB) MB\n", stderr)
-        fputs("  A window will open with the installer.\n", stderr)
-        fputs("  After install, use 'virt start \(name)' for headless boot.\n", stderr)
 
         let instance = VMInstance(config: config, dir: dir, isoPath: iso)
         let app = InstallerApp(vmInstance: instance)

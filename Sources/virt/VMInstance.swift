@@ -35,7 +35,10 @@ final class VMInstance: NSObject, VZVirtualMachineDelegate {
 
         var startError: Error?
         vm.start { result in
-            if case .failure(let error) = result {
+            switch result {
+            case .success:
+                break
+            case .failure(let error):
                 DispatchQueue.main.async {
                     fputs("VM start failed: \(error.localizedDescription)\n", stderr)
                     startError = error
@@ -67,6 +70,7 @@ final class VMInstance: NSObject, VZVirtualMachineDelegate {
 
         restoreTerminal()
         removePIDFile()
+        // TODO: DNS forwarder disabled until core flow is validated
     }
 
     // MARK: - GUI install (virt install)
@@ -83,7 +87,10 @@ final class VMInstance: NSObject, VZVirtualMachineDelegate {
         try? writePIDFile()
 
         vm.start { result in
-            if case .failure(let error) = result {
+            switch result {
+            case .success:
+                break
+            case .failure(let error):
                 DispatchQueue.main.async {
                     fputs("VM start failed: \(error.localizedDescription)\n", stderr)
                 }
@@ -93,6 +100,7 @@ final class VMInstance: NSObject, VZVirtualMachineDelegate {
 
     func cleanup() {
         removePIDFile()
+        // TODO: DNS forwarder disabled until core flow is validated
     }
 
     // MARK: - Shutdown
@@ -171,60 +179,34 @@ final class VMInstance: NSObject, VZVirtualMachineDelegate {
         // Entropy
         vzConfig.entropyDevices = [VZVirtioEntropyDeviceConfiguration()]
 
+        // Framebuffer — always present. EFI and GRUB need it to function.
+        // In GUI mode it's displayed in a window; headless it renders to nothing.
+        let graphics = VZVirtioGraphicsDeviceConfiguration()
+        graphics.scanouts = [VZVirtioGraphicsScanoutConfiguration(
+            widthInPixels: 1280,
+            heightInPixels: 800
+        )]
+        vzConfig.graphicsDevices = [graphics]
+
         if gui {
-            // GUI mode: framebuffer + keyboard + mouse
-            let graphics = VZVirtioGraphicsDeviceConfiguration()
-            graphics.scanouts = [VZVirtioGraphicsScanoutConfiguration(
-                widthInPixels: 1280,
-                heightInPixels: 800
-            )]
-            vzConfig.graphicsDevices = [graphics]
             vzConfig.keyboards = [VZUSBKeyboardConfiguration()]
             vzConfig.pointingDevices = [VZUSBScreenCoordinatePointingDeviceConfiguration()]
         }
 
-        // Virtio console (hvc0) — always present for post-install headless use
-        let consoleDevice = VZVirtioConsoleDeviceConfiguration()
-        let consolePort = VZVirtioConsolePortConfiguration()
-        consolePort.isConsole = true
+        // Serial console — Apple's exact pattern: stdin/stdout directly
+        let serialAttachment = VZFileHandleSerialPortAttachment(
+            fileHandleForReading: FileHandle.standardInput,
+            fileHandleForWriting: FileHandle.standardOutput
+        )
+        let serialPort = VZVirtioConsoleDeviceSerialPortConfiguration()
+        serialPort.attachment = serialAttachment
+        vzConfig.serialPorts = [serialPort]
 
-        if gui {
-            // GUI mode: console device present but not wired to terminal
-            consoleDevice.ports[0] = consolePort
-        } else {
-            // Headless mode: wire hvc0 to stdin/stdout
-            let inputPipe = Pipe()
-            let outputPipe = Pipe()
-
-            let consoleAttachment = VZFileHandleSerialPortAttachment(
-                fileHandleForReading: inputPipe.fileHandleForReading,
-                fileHandleForWriting: outputPipe.fileHandleForWriting
-            )
-            consolePort.attachment = consoleAttachment
-            consoleDevice.ports[0] = consolePort
-
+        if !gui {
             if isatty(STDIN_FILENO) != 0 {
                 enableRawMode()
             }
-
-            FileHandle.standardInput.readabilityHandler = { handle in
-                let data = handle.availableData
-                if !data.isEmpty {
-                    inputPipe.fileHandleForWriting.write(data)
-                }
-            }
-
-            outputPipe.fileHandleForReading.readabilityHandler = { handle in
-                let data = handle.availableData
-                if data.isEmpty {
-                    handle.readabilityHandler = nil
-                } else {
-                    FileHandle.standardOutput.write(data)
-                }
-            }
         }
-
-        vzConfig.consoleDevices = [consoleDevice]
 
         return vzConfig
     }
