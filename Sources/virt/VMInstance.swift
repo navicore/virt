@@ -2,9 +2,6 @@ import ArgumentParser
 import Foundation
 import Virtualization
 
-private var savedTermios: termios?
-private var atexitRegistered = false
-
 final class VMInstance: NSObject, VZVirtualMachineDelegate {
     let config: VMConfig
     let dir: VMDirectory
@@ -12,6 +9,10 @@ final class VMInstance: NSObject, VZVirtualMachineDelegate {
     private var virtualMachine: VZVirtualMachine?
     private var shutdownRequested = false
     private var shutdownDeadline: Date?
+    private var signalSource: (any DispatchSourceSignal)?
+    private var originalTermios: termios?
+
+    private static var atexitRegistered = false
 
     init(config: VMConfig, dir: VMDirectory, isoPath: String?) {
         self.config = config
@@ -33,8 +34,10 @@ final class VMInstance: NSObject, VZVirtualMachineDelegate {
         var startError: Error?
         vm.start { result in
             if case .failure(let error) = result {
-                fputs("VM start failed: \(error.localizedDescription)\n", stderr)
-                startError = error
+                DispatchQueue.main.async {
+                    fputs("VM start failed: \(error.localizedDescription)\n", stderr)
+                    startError = error
+                }
             }
         }
 
@@ -63,6 +66,7 @@ final class VMInstance: NSObject, VZVirtualMachineDelegate {
             }
         }
 
+        restoreTerminal()
         removePIDFile()
     }
 
@@ -140,7 +144,9 @@ final class VMInstance: NSObject, VZVirtualMachineDelegate {
         networkDevice.attachment = VZNATNetworkDeviceAttachment()
         vzConfig.networkDevices = [networkDevice]
 
-        // Serial console wired to stdin/stdout
+        // Virtio console — exposes as /dev/hvc0 in the guest.
+        // Most Linux distros default to ttyS0; the guest kernel may need
+        // console=hvc0 on the command line for interactive console output.
         let consoleDevice = VZVirtioConsoleDeviceConfiguration()
         let serialPort = VZVirtioConsolePortConfiguration()
         serialPort.isConsole = true
@@ -186,21 +192,12 @@ final class VMInstance: NSObject, VZVirtualMachineDelegate {
 
     private func pipeStdinToVM(inputPipe: Pipe) {
         // Set terminal to raw mode for interactive console
-        var originalTermios = termios()
-        tcgetattr(STDIN_FILENO, &originalTermios)
-        savedTermios = originalTermios
-        var rawTermios = originalTermios
+        var current = termios()
+        tcgetattr(STDIN_FILENO, &current)
+        self.originalTermios = current
+        var rawTermios = current
         cfmakeraw(&rawTermios)
         tcsetattr(STDIN_FILENO, TCSANOW, &rawTermios)
-
-        // Restore terminal on exit (register only once)
-        if !atexitRegistered {
-            atexitRegistered = true
-            atexit {
-                guard var t = savedTermios else { return }
-                tcsetattr(STDIN_FILENO, TCSANOW, &t)
-            }
-        }
 
         FileHandle.standardInput.readabilityHandler = { handle in
             let data = handle.availableData
@@ -208,6 +205,12 @@ final class VMInstance: NSObject, VZVirtualMachineDelegate {
                 inputPipe.fileHandleForWriting.write(data)
             }
         }
+    }
+
+    private func restoreTerminal() {
+        guard var t = originalTermios else { return }
+        tcsetattr(STDIN_FILENO, TCSANOW, &t)
+        originalTermios = nil
     }
 
     // MARK: - PID file
@@ -230,5 +233,6 @@ final class VMInstance: NSObject, VZVirtualMachineDelegate {
             self?.requestShutdown()
         }
         source.resume()
+        self.signalSource = source
     }
 }

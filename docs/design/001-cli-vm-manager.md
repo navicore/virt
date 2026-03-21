@@ -37,10 +37,10 @@ alongside the disk image and EFI variable store.
 
 | Command | What it does |
 |---|---|
-| `virt create <name> --iso <path> --disk <size> --cpus <n> --memory <mb>` | Allocate disk image, write config, store EFI NVRAM |
+| `virt create <name> --disk <size> --cpus <n> --memory <mb>` | Allocate disk image, write config, store EFI NVRAM |
 | `virt start <name> [--iso <path>]` | Boot VM; optional ISO attachment for install/rescue |
 | `virt stop <name>` | Request graceful shutdown via virtio; fallback to force kill |
-| `virt delete <name>` | Remove VM directory (disk, config, NVRAM) |
+| `virt delete <name> [--force]` | Remove VM directory (disk, config, NVRAM); prompts for confirmation unless `--force` |
 | `virt list` | Show all VMs and their state (stopped/running) |
 
 **VM hardware model** (per VM):
