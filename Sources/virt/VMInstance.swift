@@ -3,6 +3,7 @@ import Foundation
 import Virtualization
 
 private var savedTermios: termios?
+private var atexitRegistered = false
 
 final class VMInstance: NSObject, VZVirtualMachineDelegate {
     let config: VMConfig
@@ -10,6 +11,7 @@ final class VMInstance: NSObject, VZVirtualMachineDelegate {
     let isoPath: String?
     private var virtualMachine: VZVirtualMachine?
     private var shutdownRequested = false
+    private var shutdownDeadline: Date?
 
     init(config: VMConfig, dir: VMDirectory, isoPath: String?) {
         self.config = config
@@ -28,23 +30,36 @@ final class VMInstance: NSObject, VZVirtualMachineDelegate {
         try writePIDFile()
         setupSignalHandler()
 
-        let semaphore = DispatchSemaphore(value: 0)
-
+        var startError: Error?
         vm.start { result in
-            switch result {
-            case .success:
-                break
-            case .failure(let error):
+            if case .failure(let error) = result {
                 fputs("VM start failed: \(error.localizedDescription)\n", stderr)
-                semaphore.signal()
+                startError = error
             }
         }
 
         // Run the run loop to keep the VM alive and handle console I/O
         while !shutdownRequested {
             RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.25))
-            if vm.state == .stopped || vm.state == .error {
+            if startError != nil || vm.state == .stopped || vm.state == .error {
                 break
+            }
+        }
+
+        // If shutdown was requested via Ctrl-C, wait for graceful stop with timeout
+        if let deadline = shutdownDeadline {
+            while vm.state != .stopped && Date() < deadline {
+                RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.25))
+            }
+            if vm.state != .stopped {
+                fputs("Force stopping VM...\n", stderr)
+                vm.stop { error in
+                    if let error = error {
+                        fputs("Force stop failed: \(error.localizedDescription)\n", stderr)
+                    }
+                }
+                // Give force stop a moment to complete
+                RunLoop.main.run(until: Date(timeIntervalSinceNow: 1.0))
             }
         }
 
@@ -52,7 +67,7 @@ final class VMInstance: NSObject, VZVirtualMachineDelegate {
     }
 
     func requestShutdown() {
-        guard let vm = virtualMachine else { return }
+        guard let vm = virtualMachine, !shutdownRequested else { return }
         shutdownRequested = true
 
         if vm.canRequestStop {
@@ -62,21 +77,7 @@ final class VMInstance: NSObject, VZVirtualMachineDelegate {
             } catch {
                 fputs("Failed to request stop: \(error.localizedDescription)\n", stderr)
             }
-
-            // Wait up to 10 seconds for graceful shutdown
-            let deadline = Date(timeIntervalSinceNow: 10)
-            while vm.state != .stopped && Date() < deadline {
-                RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.25))
-            }
-        }
-
-        if vm.state != .stopped {
-            fputs("Force stopping VM...\n", stderr)
-            vm.stop { error in
-                if let error = error {
-                    fputs("Force stop failed: \(error.localizedDescription)\n", stderr)
-                }
-            }
+            shutdownDeadline = Date(timeIntervalSinceNow: 10)
         }
     }
 
@@ -103,18 +104,16 @@ final class VMInstance: NSObject, VZVirtualMachineDelegate {
 
         // EFI boot loader with per-VM NVRAM
         let bootLoader = VZEFIBootLoader()
-        bootLoader.variableStore = VZEFIVariableStore(url: dir.nvramURL)
+        if FileManager.default.fileExists(atPath: dir.nvramURL.path) {
+            bootLoader.variableStore = VZEFIVariableStore(url: dir.nvramURL)
+        } else {
+            bootLoader.variableStore = try VZEFIVariableStore(creatingVariableStoreAt: dir.nvramURL)
+        }
         vzConfig.bootLoader = bootLoader
 
-        // Main disk
-        let diskAttachment = try VZDiskImageStorageDeviceAttachment(
-            url: dir.diskURL,
-            readOnly: false
-        )
-        let diskDevice = VZVirtioBlockDeviceConfiguration(attachment: diskAttachment)
-        vzConfig.storageDevices = [diskDevice]
+        // Storage devices — ISO first (if provided) for boot priority on fresh VMs
+        var storageDevices: [VZStorageDeviceConfiguration] = []
 
-        // ISO attachment (if provided)
         if let isoPath = isoPath {
             let isoURL = URL(fileURLWithPath: isoPath)
             guard FileManager.default.fileExists(atPath: isoURL.path) else {
@@ -124,9 +123,17 @@ final class VMInstance: NSObject, VZVirtualMachineDelegate {
                 url: isoURL,
                 readOnly: true
             )
-            let isoDevice = VZUSBMassStorageDeviceConfiguration(attachment: isoAttachment)
-            vzConfig.storageDevices.append(isoDevice)
+            storageDevices.append(VZUSBMassStorageDeviceConfiguration(attachment: isoAttachment))
         }
+
+        // Main disk
+        let diskAttachment = try VZDiskImageStorageDeviceAttachment(
+            url: dir.diskURL,
+            readOnly: false
+        )
+        storageDevices.append(VZVirtioBlockDeviceConfiguration(attachment: diskAttachment))
+
+        vzConfig.storageDevices = storageDevices
 
         // NAT networking
         let networkDevice = VZVirtioNetworkDeviceConfiguration()
@@ -149,13 +156,24 @@ final class VMInstance: NSObject, VZVirtualMachineDelegate {
         consoleDevice.ports[0] = serialPort
         vzConfig.consoleDevices = [consoleDevice]
 
-        // Pipe stdin to the VM
-        pipeStdinToVM(inputPipe: inputPipe)
+        // Pipe stdin to the VM (only if running in a terminal)
+        if isatty(STDIN_FILENO) != 0 {
+            pipeStdinToVM(inputPipe: inputPipe)
+        } else {
+            FileHandle.standardInput.readabilityHandler = { handle in
+                let data = handle.availableData
+                if !data.isEmpty {
+                    inputPipe.fileHandleForWriting.write(data)
+                }
+            }
+        }
 
         // Pipe VM output to stdout
         outputPipe.fileHandleForReading.readabilityHandler = { handle in
             let data = handle.availableData
-            if !data.isEmpty {
+            if data.isEmpty {
+                handle.readabilityHandler = nil
+            } else {
                 FileHandle.standardOutput.write(data)
             }
         }
@@ -175,10 +193,13 @@ final class VMInstance: NSObject, VZVirtualMachineDelegate {
         cfmakeraw(&rawTermios)
         tcsetattr(STDIN_FILENO, TCSANOW, &rawTermios)
 
-        // Restore terminal on exit
-        atexit {
-            guard var t = savedTermios else { return }
-            tcsetattr(STDIN_FILENO, TCSANOW, &t)
+        // Restore terminal on exit (register only once)
+        if !atexitRegistered {
+            atexitRegistered = true
+            atexit {
+                guard var t = savedTermios else { return }
+                tcsetattr(STDIN_FILENO, TCSANOW, &t)
+            }
         }
 
         FileHandle.standardInput.readabilityHandler = { handle in
