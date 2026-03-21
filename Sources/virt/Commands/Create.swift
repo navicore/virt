@@ -1,4 +1,6 @@
 import ArgumentParser
+import Foundation
+import Virtualization
 
 struct Create: ParsableCommand {
     static let configuration = CommandConfiguration(
@@ -7,9 +9,6 @@ struct Create: ParsableCommand {
 
     @Argument(help: "Name of the VM")
     var name: String
-
-    @Option(help: "Path to ISO image")
-    var iso: String? = nil
 
     @Option(help: "Disk size in GB")
     var disk: Int = 10
@@ -21,6 +20,37 @@ struct Create: ParsableCommand {
     var memory: Int = 2048
 
     func run() throws {
-        print("Creating VM '\(name)' (disk: \(disk)GB, cpus: \(cpus), memory: \(memory)MB)")
+        let dir = VMDirectory(name: name)
+
+        guard !dir.exists else {
+            throw ValidationError("VM '\(name)' already exists.")
+        }
+
+        try dir.create()
+
+        // Write config
+        let config = VMConfig(
+            name: name,
+            cpus: cpus,
+            memoryMB: memory,
+            diskSizeGB: disk
+        )
+        try config.write(to: dir.configURL)
+
+        // Allocate raw disk image
+        let diskSizeBytes = UInt64(disk) * 1024 * 1024 * 1024
+        FileManager.default.createFile(atPath: dir.diskURL.path, contents: nil)
+        let handle = try FileHandle(forWritingTo: dir.diskURL)
+        try handle.truncate(atOffset: diskSizeBytes)
+        try handle.close()
+
+        // Initialize EFI variable store
+        let _ = try VZEFIVariableStore(creatingVariableStoreAt: dir.nvramURL)
+
+        print("Created VM '\(name)'")
+        print("  CPUs:   \(cpus)")
+        print("  Memory: \(memory) MB")
+        print("  Disk:   \(disk) GB")
+        print("  Path:   \(dir.rootURL.path)")
     }
 }
