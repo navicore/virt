@@ -20,5 +20,9 @@ let package = Package(
                 .linkedFramework("Virtualization"),
             ]
         ),
+        .testTarget(
+            name: "virtTests",
+            dependencies: ["virt"]
+        ),
     ]
 )
