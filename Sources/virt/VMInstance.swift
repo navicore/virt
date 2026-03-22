@@ -82,7 +82,6 @@ final class VMInstance: NSObject, VZVirtualMachineDelegate {
 
     func startVM(_ vm: VZVirtualMachine) {
         self.virtualMachine = vm
-        vm.delegate = self
         try? writePIDFile()
 
         vm.start { result in
