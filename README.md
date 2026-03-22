@@ -15,6 +15,27 @@ make
 
 This runs `swift build` and signs the binary with the required virtualization entitlement.
 
+## Install
+
+```
+sudo make install
+```
+
+Builds a release binary and installs to `/usr/local/bin`. Customize with `PREFIX=~/.local`.
+
+## Shell completions
+
+```
+source <(virt --generate-completion-script zsh)
+```
+
+Add that line to your `.zshrc` for persistent tab completion. Bash and fish are also supported:
+
+```
+source <(virt --generate-completion-script bash)
+virt --generate-completion-script fish | source
+```
+
 ## Usage
 
 ### Create a VM
