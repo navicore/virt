@@ -36,6 +36,10 @@ class InstallerApp: NSObject, NSApplicationDelegate, VZVirtualMachineDelegate, N
             backing: .buffered,
             defer: false
         )
+        // Cap resolution during ISO install — installers can't handle high DPI
+        if vmInstance.isoPath != nil {
+            window.contentMaxSize = NSSize(width: 1920, height: 1200)
+        }
         window.title = "virt install: \(vmInstance.config.name)"
         window.contentView = vmView
         window.delegate = self
