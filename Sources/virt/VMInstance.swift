@@ -212,6 +212,7 @@ final class VMInstance: NSObject, VZVirtualMachineDelegate {
                 let spicePort = VZVirtioConsolePortConfiguration()
                 spicePort.name = VZSpiceAgentPortAttachment.spiceAgentPortName
                 spicePort.attachment = VZSpiceAgentPortAttachment()
+                spicePort.isConsole = false
                 clipboardDevice.ports[0] = spicePort
                 vzConfig.consoleDevices = [clipboardDevice]
             }
