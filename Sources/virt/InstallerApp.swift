@@ -26,6 +26,9 @@ class InstallerApp: NSObject, NSApplicationDelegate, VZVirtualMachineDelegate, N
         let vmView = VZVirtualMachineView()
         vmView.virtualMachine = vm
         vmView.capturesSystemKeys = true
+        if #available(macOS 14.0, *) {
+            vmView.automaticallyReconfiguresDisplay = true
+        }
 
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 1280, height: 800),

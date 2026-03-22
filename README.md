@@ -62,6 +62,65 @@ virt start myvm
 EFI boots silently (~5s), then the Linux console appears in your terminal.
 Use `virt stop myvm` from another terminal to shut down.
 
+### Shared folders
+
+Share a host directory with the VM:
+
+```
+virt start myvm --share ~/code
+virt install myvm --share ~/code
+```
+
+Inside the VM, mount it:
+
+```
+mkdir -p /mnt/share
+mount -t virtiofs share /mnt/share
+```
+
+For persistent mounting, add to `/etc/fstab`:
+
+```
+share /mnt/share virtiofs defaults 0 0
+```
+
+### Clipboard (copy/paste)
+
+Clipboard sharing between macOS and the Linux guest works in GUI mode
+(`virt install`). Install the SPICE agent inside the VM:
+
+```
+apt install spice-vdagent
+systemctl enable spice-vdagentd
+```
+
+Copy/paste works after the next boot.
+
+### Headless console tips
+
+The serial console passes ANSI escape codes transparently. ncurses apps
+(vim, htop, tmux) work if `TERM` is set correctly:
+
+```
+export TERM=xterm-256color
+```
+
+The console defaults to 80x24. After resizing your terminal window, update
+the guest:
+
+```
+stty rows 50 cols 120
+```
+
+For heavy interactive work (tmux sessions, development), SSH into the VM
+over NAT is recommended:
+
+```
+apt install openssh-server
+# then from macOS:
+ssh user@192.168.64.x
+```
+
 ### Other commands
 
 ```
