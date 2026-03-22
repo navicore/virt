@@ -12,6 +12,9 @@ struct Install: ParsableCommand {
     @Option(help: "Path to ISO image to attach")
     var iso: String? = nil
 
+    @Option(help: "Host directory to share with the VM")
+    var share: String? = nil
+
     func run() throws {
         let dir = VMDirectory(name: name)
 
@@ -36,7 +39,7 @@ struct Install: ParsableCommand {
         }
         fputs("  CPUs: \(config.cpus), Memory: \(config.memoryMB) MB\n", stderr)
 
-        let instance = VMInstance(config: config, dir: dir, isoPath: iso)
+        let instance = VMInstance(config: config, dir: dir, isoPath: iso, sharePath: share)
         let app = InstallerApp(vmInstance: instance)
         try app.run()
     }

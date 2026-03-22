@@ -26,6 +26,11 @@ class InstallerApp: NSObject, NSApplicationDelegate, VZVirtualMachineDelegate, N
         let vmView = VZVirtualMachineView()
         vmView.virtualMachine = vm
         vmView.capturesSystemKeys = true
+        if #available(macOS 14.0, *) {
+            // Disable auto-resize during ISO install — installers can't handle high DPI.
+            // Enable for post-install GUI boots so the user can resize freely.
+            vmView.automaticallyReconfiguresDisplay = (vmInstance.isoPath == nil)
+        }
 
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 1280, height: 800),
@@ -44,8 +49,6 @@ class InstallerApp: NSObject, NSApplicationDelegate, VZVirtualMachineDelegate, N
 
         app.activate(ignoringOtherApps: true)
         app.run()
-
-        vmInstance.cleanup()
     }
 
     // MARK: - VZVirtualMachineDelegate
@@ -82,5 +85,9 @@ class InstallerApp: NSObject, NSApplicationDelegate, VZVirtualMachineDelegate, N
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
         return true
+    }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        vmInstance.cleanup()
     }
 }

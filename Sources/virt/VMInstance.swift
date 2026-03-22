@@ -7,22 +7,27 @@ final class VMInstance: NSObject, VZVirtualMachineDelegate {
     let config: VMConfig
     let dir: VMDirectory
     let isoPath: String?
+    let sharePath: String?
     private(set) var virtualMachine: VZVirtualMachine?
     private var shutdownRequested = false
     private var shutdownDeadline: Date?
     private var signalSource: (any DispatchSourceSignal)?
     private var originalTermios: termios?
 
-    init(config: VMConfig, dir: VMDirectory, isoPath: String?) {
+    init(config: VMConfig, dir: VMDirectory, isoPath: String?, sharePath: String? = nil) {
         self.config = config
         self.dir = dir
         self.isoPath = isoPath
+        self.sharePath = sharePath
     }
 
     // MARK: - Headless run (virt start)
 
     func runHeadless() throws {
-        defer { restoreTerminal() }
+        defer {
+            restoreTerminal()
+            removePIDFile()
+        }
         let vzConfig = try buildConfiguration(gui: false)
         try vzConfig.validate()
 
@@ -68,8 +73,6 @@ final class VMInstance: NSObject, VZVirtualMachineDelegate {
             }
         }
 
-        restoreTerminal()
-        removePIDFile()
     }
 
     // MARK: - GUI install (virt install)
@@ -176,6 +179,20 @@ final class VMInstance: NSObject, VZVirtualMachineDelegate {
         // Entropy
         vzConfig.entropyDevices = [VZVirtioEntropyDeviceConfiguration()]
 
+        // Shared folder (virtiofs)
+        if let sharePath = sharePath {
+            let shareURL = URL(fileURLWithPath: sharePath)
+            var isDir: ObjCBool = false
+            guard FileManager.default.fileExists(atPath: shareURL.path, isDirectory: &isDir), isDir.boolValue else {
+                throw ValidationError("Shared path is not a directory: \(sharePath)")
+            }
+            let sharedDir = VZSharedDirectory(url: shareURL, readOnly: false)
+            let share = VZSingleDirectoryShare(directory: sharedDir)
+            let fsDevice = VZVirtioFileSystemDeviceConfiguration(tag: "share")
+            fsDevice.share = share
+            vzConfig.directorySharingDevices = [fsDevice]
+        }
+
         // Framebuffer — always present. EFI and GRUB need it to function.
         // In GUI mode it's displayed in a window; headless it renders to nothing.
         let graphics = VZVirtioGraphicsDeviceConfiguration()
@@ -188,6 +205,17 @@ final class VMInstance: NSObject, VZVirtualMachineDelegate {
         if gui {
             vzConfig.keyboards = [VZUSBKeyboardConfiguration()]
             vzConfig.pointingDevices = [VZUSBScreenCoordinatePointingDeviceConfiguration()]
+
+            // Clipboard sharing via SPICE agent (macOS 14+)
+            if #available(macOS 14.0, *) {
+                let clipboardDevice = VZVirtioConsoleDeviceConfiguration()
+                let spicePort = VZVirtioConsolePortConfiguration()
+                spicePort.name = VZSpiceAgentPortAttachment.spiceAgentPortName
+                spicePort.attachment = VZSpiceAgentPortAttachment()
+                spicePort.isConsole = false
+                clipboardDevice.ports[0] = spicePort
+                vzConfig.consoleDevices = [clipboardDevice]
+            }
         }
 
         if !gui {

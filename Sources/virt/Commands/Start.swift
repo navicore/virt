@@ -9,6 +9,9 @@ struct Start: ParsableCommand {
     @Argument(help: "Name of the VM")
     var name: String
 
+    @Option(help: "Host directory to share with the VM")
+    var share: String? = nil
+
     func run() throws {
         let dir = VMDirectory(name: name)
 
@@ -31,7 +34,11 @@ struct Start: ParsableCommand {
         fputs("  CPUs: \(config.cpus), Memory: \(config.memoryMB) MB\n", stderr)
         fputs("  Console attached (hvc0). Use 'virt stop \(name)' to shut down.\n", stderr)
 
-        let instance = VMInstance(config: config, dir: dir, isoPath: nil)
+        if let share = share {
+            fputs("  Shared folder: \(share) (mount with: mount -t virtiofs share /mnt)\n", stderr)
+        }
+
+        let instance = VMInstance(config: config, dir: dir, isoPath: nil, sharePath: share)
         try instance.runHeadless()
     }
 }
