@@ -191,16 +191,16 @@ final class VMInstance: NSObject, VZVirtualMachineDelegate {
             vzConfig.pointingDevices = [VZUSBScreenCoordinatePointingDeviceConfiguration()]
         }
 
-        // Serial console — Apple's exact pattern: stdin/stdout directly
-        let serialAttachment = VZFileHandleSerialPortAttachment(
-            fileHandleForReading: FileHandle.standardInput,
-            fileHandleForWriting: FileHandle.standardOutput
-        )
-        let serialPort = VZVirtioConsoleDeviceSerialPortConfiguration()
-        serialPort.attachment = serialAttachment
-        vzConfig.serialPorts = [serialPort]
-
         if !gui {
+            // Headless: wire serial console to stdin/stdout
+            let serialAttachment = VZFileHandleSerialPortAttachment(
+                fileHandleForReading: FileHandle.standardInput,
+                fileHandleForWriting: FileHandle.standardOutput
+            )
+            let serialPort = VZVirtioConsoleDeviceSerialPortConfiguration()
+            serialPort.attachment = serialAttachment
+            vzConfig.serialPorts = [serialPort]
+
             if isatty(STDIN_FILENO) != 0 {
                 enableRawMode()
             }
