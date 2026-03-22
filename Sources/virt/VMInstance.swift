@@ -24,7 +24,10 @@ final class VMInstance: NSObject, VZVirtualMachineDelegate {
     // MARK: - Headless run (virt start)
 
     func runHeadless() throws {
-        defer { restoreTerminal() }
+        defer {
+            restoreTerminal()
+            removePIDFile()
+        }
         let vzConfig = try buildConfiguration(gui: false)
         try vzConfig.validate()
 
@@ -70,8 +73,6 @@ final class VMInstance: NSObject, VZVirtualMachineDelegate {
             }
         }
 
-        restoreTerminal()
-        removePIDFile()
     }
 
     // MARK: - GUI install (virt install)

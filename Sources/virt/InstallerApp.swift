@@ -90,4 +90,8 @@ class InstallerApp: NSObject, NSApplicationDelegate, VZVirtualMachineDelegate, N
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
         return true
     }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        vmInstance.cleanup()
+    }
 }
