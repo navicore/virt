@@ -70,7 +70,6 @@ final class VMInstance: NSObject, VZVirtualMachineDelegate {
 
         restoreTerminal()
         removePIDFile()
-        // TODO: DNS forwarder disabled until core flow is validated
     }
 
     // MARK: - GUI install (virt install)
@@ -100,7 +99,6 @@ final class VMInstance: NSObject, VZVirtualMachineDelegate {
 
     func cleanup() {
         removePIDFile()
-        // TODO: DNS forwarder disabled until core flow is validated
     }
 
     // MARK: - Shutdown
