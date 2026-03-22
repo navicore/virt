@@ -60,7 +60,6 @@ alongside the disk image and EFI variable store.
 
 **Entitlements** (virt.entitlements):
 - `com.apple.security.virtualization` — required for Virtualization.framework
-- `com.apple.security.network.server` — required for DNS forwarder on port 53
 
 **Lifecycle management**: `virt start` runs in the foreground with the console
 attached to stdin/stdout. `virt stop` from another terminal sends SIGINT then

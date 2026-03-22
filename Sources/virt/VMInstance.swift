@@ -70,7 +70,6 @@ final class VMInstance: NSObject, VZVirtualMachineDelegate {
 
         restoreTerminal()
         removePIDFile()
-        // TODO: DNS forwarder disabled until core flow is validated
     }
 
     // MARK: - GUI install (virt install)
@@ -83,7 +82,6 @@ final class VMInstance: NSObject, VZVirtualMachineDelegate {
 
     func startVM(_ vm: VZVirtualMachine) {
         self.virtualMachine = vm
-        vm.delegate = self
         try? writePIDFile()
 
         vm.start { result in
@@ -100,7 +98,6 @@ final class VMInstance: NSObject, VZVirtualMachineDelegate {
 
     func cleanup() {
         removePIDFile()
-        // TODO: DNS forwarder disabled until core flow is validated
     }
 
     // MARK: - Shutdown
@@ -193,16 +190,16 @@ final class VMInstance: NSObject, VZVirtualMachineDelegate {
             vzConfig.pointingDevices = [VZUSBScreenCoordinatePointingDeviceConfiguration()]
         }
 
-        // Serial console — Apple's exact pattern: stdin/stdout directly
-        let serialAttachment = VZFileHandleSerialPortAttachment(
-            fileHandleForReading: FileHandle.standardInput,
-            fileHandleForWriting: FileHandle.standardOutput
-        )
-        let serialPort = VZVirtioConsoleDeviceSerialPortConfiguration()
-        serialPort.attachment = serialAttachment
-        vzConfig.serialPorts = [serialPort]
-
         if !gui {
+            // Headless: wire serial console to stdin/stdout
+            let serialAttachment = VZFileHandleSerialPortAttachment(
+                fileHandleForReading: FileHandle.standardInput,
+                fileHandleForWriting: FileHandle.standardOutput
+            )
+            let serialPort = VZVirtioConsoleDeviceSerialPortConfiguration()
+            serialPort.attachment = serialAttachment
+            vzConfig.serialPorts = [serialPort]
+
             if isatty(STDIN_FILENO) != 0 {
                 enableRawMode()
             }
