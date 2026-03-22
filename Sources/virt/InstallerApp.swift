@@ -27,7 +27,9 @@ class InstallerApp: NSObject, NSApplicationDelegate, VZVirtualMachineDelegate, N
         vmView.virtualMachine = vm
         vmView.capturesSystemKeys = true
         if #available(macOS 14.0, *) {
-            vmView.automaticallyReconfiguresDisplay = true
+            // Disable auto-resize during ISO install — installers can't handle high DPI.
+            // Enable for post-install GUI boots so the user can resize freely.
+            vmView.automaticallyReconfiguresDisplay = (vmInstance.isoPath == nil)
         }
 
         let window = NSWindow(
@@ -36,10 +38,6 @@ class InstallerApp: NSObject, NSApplicationDelegate, VZVirtualMachineDelegate, N
             backing: .buffered,
             defer: false
         )
-        // Cap resolution during ISO install — installers can't handle high DPI
-        if vmInstance.isoPath != nil {
-            window.contentMaxSize = NSSize(width: 1920, height: 1200)
-        }
         window.title = "virt install: \(vmInstance.config.name)"
         window.contentView = vmView
         window.delegate = self
@@ -51,8 +49,6 @@ class InstallerApp: NSObject, NSApplicationDelegate, VZVirtualMachineDelegate, N
 
         app.activate(ignoringOtherApps: true)
         app.run()
-
-        vmInstance.cleanup()
     }
 
     // MARK: - VZVirtualMachineDelegate
