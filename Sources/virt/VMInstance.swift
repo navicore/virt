@@ -181,8 +181,9 @@ final class VMInstance: NSObject, VZVirtualMachineDelegate {
         // Shared folder (virtiofs)
         if let sharePath = sharePath {
             let shareURL = URL(fileURLWithPath: sharePath)
-            guard FileManager.default.fileExists(atPath: shareURL.path) else {
-                throw ValidationError("Shared directory not found: \(sharePath)")
+            var isDir: ObjCBool = false
+            guard FileManager.default.fileExists(atPath: shareURL.path, isDirectory: &isDir), isDir.boolValue else {
+                throw ValidationError("Shared path is not a directory: \(sharePath)")
             }
             let sharedDir = VZSharedDirectory(url: shareURL, readOnly: false)
             let share = VZSingleDirectoryShare(directory: sharedDir)
@@ -204,13 +205,15 @@ final class VMInstance: NSObject, VZVirtualMachineDelegate {
             vzConfig.keyboards = [VZUSBKeyboardConfiguration()]
             vzConfig.pointingDevices = [VZUSBScreenCoordinatePointingDeviceConfiguration()]
 
-            // Clipboard sharing via SPICE agent
-            let clipboardDevice = VZVirtioConsoleDeviceConfiguration()
-            let spicePort = VZVirtioConsolePortConfiguration()
-            spicePort.name = VZSpiceAgentPortAttachment.spiceAgentPortName
-            spicePort.attachment = VZSpiceAgentPortAttachment()
-            clipboardDevice.ports[0] = spicePort
-            vzConfig.consoleDevices = [clipboardDevice]
+            // Clipboard sharing via SPICE agent (macOS 14+)
+            if #available(macOS 14.0, *) {
+                let clipboardDevice = VZVirtioConsoleDeviceConfiguration()
+                let spicePort = VZVirtioConsolePortConfiguration()
+                spicePort.name = VZSpiceAgentPortAttachment.spiceAgentPortName
+                spicePort.attachment = VZSpiceAgentPortAttachment()
+                clipboardDevice.ports[0] = spicePort
+                vzConfig.consoleDevices = [clipboardDevice]
+            }
         }
 
         if !gui {
