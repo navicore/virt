@@ -12,6 +12,7 @@ struct Virt: ParsableCommand {
             Stop.self,
             Delete.self,
             List.self,
+            Completions.self,
         ]
     )
 }

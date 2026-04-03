@@ -26,14 +26,14 @@ Builds a release binary and installs to `/usr/local/bin`. Customize with `PREFIX
 ## Shell completions
 
 ```
-source <(virt --generate-completion-script zsh)
+source <(virt completions zsh)
 ```
 
 Add that line to your `.zshrc` for persistent tab completion. Bash and fish are also supported:
 
 ```
-source <(virt --generate-completion-script bash)
-virt --generate-completion-script fish | source
+source <(virt completions bash)
+virt completions fish | source
 ```
 
 ## Usage
