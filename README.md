@@ -1,3 +1,8 @@
+<!-- ghmig:moved -->
+> **This repository has moved to [https://git.navicore.tech/navicore/virt](https://git.navicore.tech/navicore/virt).**
+>
+> The GitHub copy is archived and no longer maintained.
+
 # virt
 
 A CLI tool for managing Linux VMs on macOS using Apple's Virtualization.framework.
